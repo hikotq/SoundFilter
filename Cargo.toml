@@ -1,0 +1,10 @@
+[package]
+name = "mic"
+version = "0.1.0"
+authors = ["pipopa <pipopa.710@gmail.com>"]
+
+[dependencies]
+portaudio = "*"
+hound = "*"
+rustfft = "*"
+num = "*"
