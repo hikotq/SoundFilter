@@ -7,8 +7,8 @@ use std::fmt::Debug;
 
 pub struct SoundFilter<T: FFTnum + Float + ToPrimitive> {
     window: Vec<T>,
-    prev_filtered_buf: Vec<T>,
-    prev_buf: Vec<Complex<T>>,
+    last_filtered_buf: Vec<T>,
+    last_buf: Vec<Complex<T>>,
     frames_per_buffer: usize,
     resolution: T,
     fft_buffer: Vec<Complex<T>>,
@@ -28,14 +28,14 @@ impl<T: FFTnum + Float + ToPrimitive + ToString> SoundFilter<T> {
         for i in 0..(4 * frames_per_buffer) {
             window.push(hamming(T::from(i).unwrap()));
         }
-        let prev_filtered_buf = vec![T::zero(); 2 * frames_per_buffer];
-        let prev_buf = vec![Complex::new(T::zero(), T::zero()); 2 * frames_per_buffer];
+        let last_filtered_buf = vec![T::zero(); 2 * frames_per_buffer];
+        let last_buf = vec![Complex::new(T::zero(), T::zero()); 2 * frames_per_buffer];
         let resolution = T::from(sample_rate).unwrap() / T::from(2 * frames_per_buffer).unwrap();
         let fft_buffer = vec![Complex::new(T::zero(), T::zero()); 4 * frames_per_buffer];
         SoundFilter {
             window: window,
-            prev_filtered_buf: prev_filtered_buf,
-            prev_buf: prev_buf,
+            last_filtered_buf: last_filtered_buf,
+            last_buf: last_buf,
             frames_per_buffer: frames_per_buffer,
             resolution: resolution,
             fft_buffer: fft_buffer,
@@ -45,7 +45,7 @@ impl<T: FFTnum + Float + ToPrimitive + ToString> SoundFilter<T> {
     pub fn fft(&mut self, buffer: &[T]) -> &mut Self {
         //窓関数をかける
         let mut buf = Vec::new();
-        buf.extend_from_slice(&mut self.prev_buf);
+        buf.extend_from_slice(&mut self.last_buf);
         buf.append(&mut buffer
             .iter()
             .map(|v| Complex::new(*v, T::zero()))
@@ -55,8 +55,8 @@ impl<T: FFTnum + Float + ToPrimitive + ToString> SoundFilter<T> {
             buf[i].re = buf[i].re * self.window[i];
         }
         for (i, v) in buffer.iter().enumerate() {
-            self.prev_buf[i].re = *v;
-            self.prev_buf[i].im = T::zero();
+            self.last_buf[i].re = *v;
+            self.last_buf[i].im = T::zero();
         }
         Self::dump_vec(
             "window_buffer",
@@ -90,9 +90,9 @@ impl<T: FFTnum + Float + ToPrimitive + ToString> SoundFilter<T> {
         let mut buffer = vec![Complex::new(T::zero(), T::zero()); 4 * self.frames_per_buffer];
         ifft(&mut self.fft_buffer, &mut buffer);
         let mut out = Vec::new();
-        for i in 0..self.prev_filtered_buf.len() {
-            out.push(buffer[i].re + self.prev_filtered_buf[i]);
-            self.prev_filtered_buf[i] = buffer[i + self.prev_filtered_buf.len()].re;
+        for i in 0..self.last_filtered_buf.len() {
+            out.push(buffer[i].re + self.last_filtered_buf[i]);
+            self.last_filtered_buf[i] = buffer[i + self.last_filtered_buf.len()].re;
         }
         out
     }
