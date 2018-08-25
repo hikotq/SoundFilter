@@ -1,6 +1,6 @@
+use num::Float;
 use rustfft::num_complex::Complex;
 use rustfft::{FFTnum, FFTplanner};
-use num::{Float, Zero, ToPrimitive};
 
 fn fft_core<T: FFTnum>(input: &mut [Complex<T>], output: &mut [Complex<T>], inverse: bool) {
     let mut planner = FFTplanner::new(inverse);
@@ -14,7 +14,7 @@ pub fn fft<T: FFTnum>(input: &mut [Complex<T>], output: &mut [Complex<T>]) {
 }
 
 pub fn ifft<T: FFTnum + Float>(input: &mut [Complex<T>], output: &mut [Complex<T>]) {
-    fft(input, output, true);
+    fft_core(input, output, true);
     for v in output.iter_mut() {
         *v = v.unscale(T::from(input.len() as u32).unwrap());
     }

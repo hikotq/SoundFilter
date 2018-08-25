@@ -13,8 +13,8 @@ use std::time::{Duration, Instant};
 extern crate hound;
 use hound::WavWriter;
 use std::fs;
-use std::io::{BufWriter, Write};
 use std::io;
+use std::io::{BufWriter, Write};
 use std::mem;
 use std::sync::{Arc, Mutex};
 
@@ -45,52 +45,43 @@ fn main() {
         Ok(writer) => writer,
         Err(error) => panic!(error),
     };
-    let sound = Arc::new(Mutex::new(Vec::new()));
     //let mut f = BufWriter::new(fs::File::create("original.dump").unwrap());
     {
-        let sound = sound.clone();
-    let callback = move |portaudio::InputStreamCallbackArgs { buffer, .. }| {
-        let filtered_buffer = filter::highpass_filter(&buffer, 150.0);
-        //let filtered_buffer = buffer;
-        //let mut o = "".to_string();
-        
-        sound.lock().unwrap().push(filtered_buffer.clone());
-        for &sample in filtered_buffer.iter() {
-            //let v = sample.to_string() + "\n";
-            //o.push_str(&v);
-            //wav_writer.write_sample(sample).ok();
+        let mut filter = filter::SoundFilter::new(FRAMES_PER_BUFFER as usize, SAMPLE_RATE as usize);
+        let callback = move |portaudio::InputStreamCallbackArgs { buffer, .. }| {
+            let filtered_buffer = filter
+                .fft(buffer)
+                .highpass_filter(150.0)
+                .lowpass_filter(3000.0)
+                .ifft();
+            //let filtered_buffer = buffer;
+            //let mut o = "".to_string();
+
+            for &sample in filtered_buffer.iter() {
+                wav_writer.write_sample(sample).ok();
+            }
+            //f.write(o.as_bytes()).unwrap();
+            portaudio::Continue
+        };
+        // Construct a stream with input and output sample types of f32.
+        let mut stream = match audio_port.open_non_blocking_stream(input_settings, callback) {
+            Ok(strm) => strm,
+            Err(error) => panic!(error.to_string()),
+        };
+        match stream.start() {
+            Ok(_) => {}
+            Err(error) => panic!(error.to_string()),
+        };
+        let start = Instant::now();
+        let time_to_wait = &(10 as u64);
+        while start.elapsed().as_secs().lt(time_to_wait) {
+            sleep(Duration::new(1, 0));
+            println!("{}[s] passed", start.elapsed().as_secs());
         }
-        //f.write(o.as_bytes()).unwrap();
-        portaudio::Continue
-    };
-    // Construct a stream with input and output sample types of f32.
-    let mut stream = match audio_port.open_non_blocking_stream(input_settings, callback) {
-        Ok(strm) => strm,
-        Err(error) => panic!(error.to_string()),
-    };
-    match stream.start() {
-        Ok(_) => {}
-        Err(error) => panic!(error.to_string()),
-    };
-    let start = Instant::now();
-    let time_to_wait = &(5 as u64);
-    while start.elapsed().as_secs().lt(time_to_wait) {
-        sleep(Duration::new(1, 0));
-        println!("{}[s] passed", start.elapsed().as_secs());
-    }
-    match close_stream(stream) {
-        Ok(_) => {}
-        Err(error) => panic!(error),
-    };
-    }
-    
-    
-    let buf_list = sound.lock().unwrap().clone();
-    for buf in buf_list.into_iter() {
-        let filtered_buffer = filter::highpass_filter(&buf, 150.0);
-        for sample in filtered_buffer.iter() {
-            wav_writer.write_sample(*sample).ok();
-        }
+        match close_stream(stream) {
+            Ok(_) => {}
+            Err(error) => panic!(error),
+        };
     }
 }
 fn get_wav_writer(
