@@ -1,6 +1,7 @@
 //! A demonstration of recording to wav an input stream
 //!
 //! Audio from the default input device is stored in to a wav file
+extern crate hound;
 extern crate num;
 extern crate portaudio;
 extern crate rustfft;
@@ -8,15 +9,15 @@ extern crate rustfft;
 mod fft;
 mod filter;
 
-use std::thread::sleep;
-use std::time::{Duration, Instant};
-extern crate hound;
+use filter::{NoiseCancelFilter, RevrebFilter, SoundFilter};
 use hound::WavWriter;
 use std::fs;
 use std::io;
 use std::io::{BufWriter, Write};
 use std::mem;
 use std::sync::{Arc, Mutex};
+use std::thread::sleep;
+use std::time::{Duration, Instant};
 
 const CHANNELS: i32 = 2;
 const NUM_SECONDS: i32 = 7;
@@ -47,13 +48,24 @@ fn main() {
     };
     //let mut f = BufWriter::new(fs::File::create("original.dump").unwrap());
     {
-        let mut filter = filter::SoundFilter::new(FRAMES_PER_BUFFER as usize, SAMPLE_RATE as usize);
+        let mut noise_cancel = NoiseCancelFilter::new(
+            FRAMES_PER_BUFFER as usize,
+            SAMPLE_RATE as usize,
+            150.0,
+            2500.0,
+        );
+        let mut reverb: RevrebFilter<f32> = RevrebFilter::new(
+            FRAMES_PER_BUFFER as usize,
+            SAMPLE_RATE as usize,
+            "impulse.wav",
+        );
         let callback = move |portaudio::InputStreamCallbackArgs { buffer, .. }| {
-            let filtered_buffer = filter
-                .fft(buffer)
-                .highpass_filter(150.0)
-                .lowpass_filter(3000.0)
-                .ifft();
+            //let filtered_buffer = noise_cancel.do_filtering(buffer);
+            let before: Vec<_> = buffer.clone().into_iter().map(|v| *v).collect();
+            let filtered_buffer = reverb.do_filtering(buffer);
+            let after: Vec<_> = filtered_buffer.clone();
+            dump_vec("before", &before);
+            dump_vec("after", &after);
             //let filtered_buffer = buffer;
             //let mut o = "".to_string();
 
@@ -73,7 +85,7 @@ fn main() {
             Err(error) => panic!(error.to_string()),
         };
         let start = Instant::now();
-        let time_to_wait = &(10 as u64);
+        let time_to_wait = &(20 as u64);
         while start.elapsed().as_secs().lt(time_to_wait) {
             sleep(Duration::new(1, 0));
             println!("{}[s] passed", start.elapsed().as_secs());
@@ -159,4 +171,13 @@ fn get_input_settings(
         sample_rate,
         frames,
     ))
+}
+
+fn dump_vec(s: &str, vec: &Vec<f32>) {
+    use std::fs;
+    use std::io::{BufWriter, Write};
+    let mut f = BufWriter::new(fs::File::create(s).unwrap());
+    for v in vec.iter() {
+        f.write((v.to_string() + "\n").as_bytes()).ok();
+    }
 }
